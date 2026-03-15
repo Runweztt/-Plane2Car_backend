@@ -99,8 +99,11 @@ def admin_login():
         except Exception as e:
             return jsonify({"error": "Could not fetch admin profile", "detail": str(e)}), 500
 
-        if not profile.data or profile.data.get('role') != 'admin':
-            return jsonify({"error": "Access denied. Admin role not found."}), 403
+        if not profile.data:
+            return jsonify({"error": "Admin profile not found. Run create_admin.py to set up the admin account."}), 403
+
+        if profile.data.get('role') != 'admin':
+            return jsonify({"error": "Access denied. This account does not have admin role."}), 403
 
         payload = {
             "sub": profile.data['id'],
