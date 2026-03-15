@@ -8,7 +8,7 @@ def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
 
-    CORS(app, origins=Config.CORS_ORIGINS)
+    CORS(app, origins=Config.CORS_ORIGINS, supports_credentials=True, allow_headers=["Content-Type", "Authorization"], methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
 
     from app.auth.routes import auth_bp
     from app.bookings.routes import bookings_bp
