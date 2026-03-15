@@ -77,51 +77,52 @@ def admin_login():
     import jwt
     import datetime
 
-    data = request.json or {}
-    email = data.get('email', '').strip()
-    password = data.get('password', '')
-
-    if not email or not password:
-        return jsonify({"error": "email and password are required"}), 400
-
-    # Verify against env credentials — bypasses GoTrue entirely
-    admin_email = os.getenv('ADMIN_EMAIL', '').strip()
-    admin_password = os.getenv('ADMIN_PASSWORD', '')
-
-    if not admin_email or not admin_password:
-        return jsonify({"error": "Admin credentials not configured on server"}), 500
-
-    if email != admin_email or password != admin_password:
-        return jsonify({"error": "Invalid admin credentials"}), 401
-
-    # Fetch admin profile from DB (table ops work fine)
     try:
-        profile = supabase_admin.table('profiles').select('id, full_name, role').eq('email', email).maybe_single().execute()
-    except Exception as e:
-        return jsonify({"error": "Could not fetch admin profile"}), 500
+        data = request.json or {}
+        email = data.get('email', '').strip()
+        password = data.get('password', '')
 
-    if not profile.data or profile.data.get('role') != 'admin':
-        return jsonify({"error": "Access denied. Admin role not found."}), 403
+        if not email or not password:
+            return jsonify({"error": "email and password are required"}), 400
 
-    # Generate custom JWT — no Supabase auth needed
-    payload = {
-        "sub": profile.data['id'],
-        "email": email,
-        "role": "admin",
-        "type": "admin_session",
-        "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=24)
-    }
-    token = jwt.encode(payload, os.getenv('SECRET_KEY'), algorithm='HS256')
+        admin_email = os.getenv('ADMIN_EMAIL', '').strip()
+        admin_password = os.getenv('ADMIN_PASSWORD', '').strip()
 
-    return jsonify({
-        "access_token": token,
-        "user": {
-            "id": profile.data['id'],
+        if not admin_email or not admin_password:
+            return jsonify({"error": "Admin credentials not configured on server"}), 500
+
+        if email != admin_email or password != admin_password:
+            return jsonify({"error": "Invalid admin credentials"}), 401
+
+        try:
+            profile = supabase_admin.table('profiles').select('id, full_name, role').eq('email', email).maybe_single().execute()
+        except Exception as e:
+            return jsonify({"error": "Could not fetch admin profile", "detail": str(e)}), 500
+
+        if not profile.data or profile.data.get('role') != 'admin':
+            return jsonify({"error": "Access denied. Admin role not found."}), 403
+
+        payload = {
+            "sub": profile.data['id'],
             "email": email,
-            "full_name": profile.data.get('full_name', ''),
-            "role": "admin"
+            "role": "admin",
+            "type": "admin_session",
+            "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=24)
         }
-    }), 200
+        token = jwt.encode(payload, os.getenv('SECRET_KEY'), algorithm='HS256')
+
+        return jsonify({
+            "access_token": token,
+            "user": {
+                "id": profile.data['id'],
+                "email": email,
+                "full_name": profile.data.get('full_name', ''),
+                "role": "admin"
+            }
+        }), 200
+
+    except Exception as e:
+        return jsonify({"error": "Admin login failed", "detail": str(e)}), 500
 
 
 @auth_bp.route('/login', methods=['POST'])
