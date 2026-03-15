@@ -15,9 +15,10 @@ def create_app():
     def handle_options():
         if request.method == 'OPTIONS':
             origin = request.headers.get('Origin', '')
-            if origin in Config.CORS_ORIGINS:
+            allowed = Config.CORS_ORIGINS
+            if '*' in allowed or origin in allowed:
                 resp = make_response('', 204)
-                resp.headers['Access-Control-Allow-Origin'] = origin
+                resp.headers['Access-Control-Allow-Origin'] = origin if origin else '*'
                 resp.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, PATCH, DELETE, OPTIONS'
                 resp.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
                 resp.headers['Access-Control-Allow-Credentials'] = 'true'
