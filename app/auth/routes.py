@@ -47,7 +47,19 @@ def register():
             "email": email
         }).execute()
 
-        return jsonify({"message": "Registration successful", "user_id": auth_response.user.id}), 201
+        # Return session token so frontend can auto-login (works when email confirmation is disabled)
+        session = auth_response.session
+        return jsonify({
+            "message": "Registration successful",
+            "user_id": auth_response.user.id,
+            "access_token": session.access_token if session else None,
+            "user": {
+                "id": auth_response.user.id,
+                "email": email,
+                "full_name": full_name,
+                "role": role
+            }
+        }), 201
 
     except Exception:
         return jsonify({"error": "Registration failed. Please try again."}), 400

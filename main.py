@@ -1,5 +1,5 @@
 import os
-from flask import Flask
+from flask import Flask, request, make_response
 from flask_cors import CORS
 from config import Config
 
@@ -9,6 +9,20 @@ def create_app():
     app.config.from_object(Config)
 
     CORS(app, origins=Config.CORS_ORIGINS, supports_credentials=True, allow_headers=["Content-Type", "Authorization"], methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
+
+    # Handle CORS preflight (OPTIONS) before Flask routing kicks in
+    @app.before_request
+    def handle_options():
+        if request.method == 'OPTIONS':
+            origin = request.headers.get('Origin', '')
+            if origin in Config.CORS_ORIGINS:
+                resp = make_response('', 204)
+                resp.headers['Access-Control-Allow-Origin'] = origin
+                resp.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, PATCH, DELETE, OPTIONS'
+                resp.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+                resp.headers['Access-Control-Allow-Credentials'] = 'true'
+                resp.headers['Access-Control-Max-Age'] = '86400'
+                return resp
 
     from app.auth.routes import auth_bp
     from app.bookings.routes import bookings_bp
