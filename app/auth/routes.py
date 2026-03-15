@@ -36,33 +36,42 @@ def register():
                 }
             }
         })
+    except Exception as e:
+        return jsonify({"error": "Registration failed", "detail": str(e)}), 400
 
-        if not auth_response.user:
-            return jsonify({"error": "Registration failed"}), 400
+    if not auth_response.user:
+        return jsonify({"error": "Registration failed — no user returned"}), 400
 
-        supabase_admin.table('profiles').insert({
+    # If identities is empty the email is already confirmed in Supabase — reject duplicate
+    identities = getattr(auth_response.user, 'identities', None)
+    if identities is not None and len(identities) == 0:
+        return jsonify({"error": "An account with this email already exists. Please log in."}), 409
+
+    try:
+        # upsert so repeated registration attempts don't crash on duplicate key
+        supabase_admin.table('profiles').upsert({
             "id": auth_response.user.id,
             "full_name": full_name,
             "role": role,
             "email": email
         }).execute()
+    except Exception as e:
+        # Profile insert failed — surface the real error
+        return jsonify({"error": "Profile creation failed", "detail": str(e)}), 400
 
-        # Return session token so frontend can auto-login (works when email confirmation is disabled)
-        session = auth_response.session
-        return jsonify({
-            "message": "Registration successful",
-            "user_id": auth_response.user.id,
-            "access_token": session.access_token if session else None,
-            "user": {
-                "id": auth_response.user.id,
-                "email": email,
-                "full_name": full_name,
-                "role": role
-            }
-        }), 201
-
-    except Exception:
-        return jsonify({"error": "Registration failed. Please try again."}), 400
+    # Return session token so frontend can auto-login (works when email confirmation is disabled)
+    session = auth_response.session
+    return jsonify({
+        "message": "Registration successful",
+        "user_id": auth_response.user.id,
+        "access_token": session.access_token if session else None,
+        "user": {
+            "id": auth_response.user.id,
+            "email": email,
+            "full_name": full_name,
+            "role": role
+        }
+    }), 201
 
 
 @auth_bp.route('/admin-login', methods=['POST'])
