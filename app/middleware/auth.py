@@ -54,11 +54,11 @@ def role_required(allowed_roles):
                 return jsonify({'message': 'User not authenticated'}), 401
 
             try:
-                profile = supabase_admin.table('profiles').select('role').eq('id', user_id).maybe_single().execute()
+                result = supabase_admin.table('profiles').select('role').eq('id', user_id).limit(1).execute()
             except Exception:
                 return jsonify({'message': 'Permission denied'}), 403
 
-            if not profile.data or profile.data.get('role') not in allowed_roles:
+            if not result.data or result.data[0].get('role') not in allowed_roles:
                 return jsonify({'message': 'Permission denied'}), 403
 
             return f(*args, **kwargs)

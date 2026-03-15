@@ -1,4 +1,6 @@
 import os
+import jwt
+import datetime
 from flask import Blueprint, request, jsonify
 from app.services.supabase_client import supabase, supabase_admin
 
@@ -10,7 +12,7 @@ ALLOWED_ROLES = {'passenger', 'concierge'}
 @auth_bp.route('/register', methods=['POST'])
 def register():
     data = request.json or {}
-    email = data.get('email', '').strip()
+    email = data.get('email', '').strip().lower()
     password = data.get('password', '')
     full_name = data.get('full_name', '').strip()
     role = data.get('role', 'passenger')
@@ -21,34 +23,34 @@ def register():
     if len(password) < 8:
         return jsonify({"error": "Password must be at least 8 characters"}), 400
 
-    # Prevent privilege escalation — only passenger/concierge allowed at registration
+    if len(full_name) > 100 or len(email) > 254:
+        return jsonify({"error": "Input too long"}), 400
+
     if role not in ALLOWED_ROLES:
         role = 'passenger'
 
+    # Create the Supabase auth user
     try:
         auth_response = supabase.auth.sign_up({
             "email": email,
             "password": password,
             "options": {
-                "data": {
-                    "full_name": full_name,
-                    "role": role
-                }
+                "data": {"full_name": full_name, "role": role}
             }
         })
     except Exception as e:
         return jsonify({"error": "Registration failed", "detail": str(e)}), 400
 
     if not auth_response.user:
-        return jsonify({"error": "Registration failed — no user returned"}), 400
+        return jsonify({"error": "Registration failed"}), 400
 
-    # If identities is empty the email is already confirmed in Supabase — reject duplicate
+    # Reject duplicate confirmed accounts
     identities = getattr(auth_response.user, 'identities', None)
     if identities is not None and len(identities) == 0:
         return jsonify({"error": "An account with this email already exists. Please log in."}), 409
 
+    # Upsert profile — safe for repeated attempts
     try:
-        # upsert so repeated registration attempts don't crash on duplicate key
         supabase_admin.table('profiles').upsert({
             "id": auth_response.user.id,
             "full_name": full_name,
@@ -72,66 +74,10 @@ def register():
     }), 201
 
 
-@auth_bp.route('/admin-login', methods=['POST'])
-def admin_login():
-    import jwt
-    import datetime
-
-    try:
-        data = request.json or {}
-        email = data.get('email', '').strip()
-        password = data.get('password', '')
-
-        if not email or not password:
-            return jsonify({"error": "email and password are required"}), 400
-
-        admin_email = os.getenv('ADMIN_EMAIL', '').strip()
-        admin_password = os.getenv('ADMIN_PASSWORD', '').strip()
-
-        if not admin_email or not admin_password:
-            return jsonify({"error": "Admin credentials not configured on server"}), 500
-
-        if email != admin_email or password != admin_password:
-            return jsonify({"error": "Invalid admin credentials"}), 401
-
-        try:
-            profile = supabase_admin.table('profiles').select('id, full_name, role').eq('email', email).maybe_single().execute()
-        except Exception as e:
-            return jsonify({"error": "Could not fetch admin profile", "detail": str(e)}), 500
-
-        if not profile.data:
-            return jsonify({"error": "Admin profile not found. Run create_admin.py to set up the admin account."}), 403
-
-        if profile.data.get('role') != 'admin':
-            return jsonify({"error": "Access denied. This account does not have admin role."}), 403
-
-        payload = {
-            "sub": profile.data['id'],
-            "email": email,
-            "role": "admin",
-            "type": "admin_session",
-            "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=24)
-        }
-        token = jwt.encode(payload, os.getenv('SECRET_KEY'), algorithm='HS256')
-
-        return jsonify({
-            "access_token": token,
-            "user": {
-                "id": profile.data['id'],
-                "email": email,
-                "full_name": profile.data.get('full_name', ''),
-                "role": "admin"
-            }
-        }), 200
-
-    except Exception as e:
-        return jsonify({"error": "Admin login failed", "detail": str(e)}), 500
-
-
 @auth_bp.route('/login', methods=['POST'])
 def login():
     data = request.json or {}
-    email = data.get('email', '').strip()
+    email = data.get('email', '').strip().lower()
     password = data.get('password', '')
 
     if not email or not password:
@@ -145,16 +91,16 @@ def login():
     except Exception:
         return jsonify({"error": "Invalid email or password"}), 401
 
-    # Auth succeeded — fetch role separately so a missing profile never kills login
+    # Fetch role from profiles — use .limit(1) instead of maybe_single() for reliability
     role = 'passenger'
     full_name = ''
     try:
-        profile = supabase_admin.table('profiles').select('role, full_name').eq('id', response.user.id).maybe_single().execute()
-        if profile.data:
-            role = profile.data.get('role', 'passenger')
-            full_name = profile.data.get('full_name', '')
+        result = supabase_admin.table('profiles').select('role, full_name').eq('id', response.user.id).limit(1).execute()
+        if result.data:
+            role = result.data[0].get('role', 'passenger')
+            full_name = result.data[0].get('full_name', '')
     except Exception:
-        pass
+        pass  # Non-fatal — default role applies
 
     return jsonify({
         "access_token": response.session.access_token,
@@ -165,3 +111,59 @@ def login():
             "role": role
         }
     }), 200
+
+
+@auth_bp.route('/admin-login', methods=['POST'])
+def admin_login():
+    try:
+        data = request.json or {}
+        email = data.get('email', '').strip().lower()
+        password = data.get('password', '')
+
+        if not email or not password:
+            return jsonify({"error": "email and password are required"}), 400
+
+        admin_email = os.getenv('ADMIN_EMAIL', '').strip().lower()
+        admin_password = os.getenv('ADMIN_PASSWORD', '').strip()
+
+        if not admin_email or not admin_password:
+            return jsonify({"error": "Admin credentials not configured on server"}), 500
+
+        if email != admin_email or password != admin_password:
+            return jsonify({"error": "Invalid admin credentials"}), 401
+
+        # Use .limit(1) — maybe_single() returns None in supabase-py 2.9.x when no row found
+        try:
+            result = supabase_admin.table('profiles').select('id, full_name, role').eq('email', email).limit(1).execute()
+        except Exception:
+            return jsonify({"error": "Could not fetch admin profile"}), 500
+
+        if not result.data:
+            return jsonify({"error": "Admin profile not found. Run create_admin.py to set up the admin account."}), 403
+
+        profile_data = result.data[0]
+
+        if profile_data.get('role') != 'admin':
+            return jsonify({"error": "Access denied"}), 403
+
+        payload = {
+            "sub": profile_data['id'],
+            "email": email,
+            "role": "admin",
+            "type": "admin_session",
+            "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=24)
+        }
+        token = jwt.encode(payload, os.getenv('SECRET_KEY'), algorithm='HS256')
+
+        return jsonify({
+            "access_token": token,
+            "user": {
+                "id": profile_data['id'],
+                "email": email,
+                "full_name": profile_data.get('full_name', ''),
+                "role": "admin"
+            }
+        }), 200
+
+    except Exception as e:
+        return jsonify({"error": "Admin login failed", "detail": str(e)}), 500

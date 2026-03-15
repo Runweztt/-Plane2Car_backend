@@ -61,41 +61,6 @@ def create_app():
     def health():
         return {'status': 'healthy'}, 200
 
-    @app.route('/debug-keys')
-    def debug_keys():
-        from app.services.supabase_client import supabase, supabase_admin
-        from config import Config
-        results = {}
-
-        # Check env vars are loaded
-        results['SUPABASE_URL'] = bool(Config.SUPABASE_URL)
-        results['SUPABASE_KEY'] = bool(Config.SUPABASE_KEY)
-        results['SUPABASE_SERVICE_KEY'] = bool(Config.SUPABASE_SERVICE_KEY)
-        results['SECRET_KEY'] = bool(Config.SECRET_KEY)
-
-        # Test anon key — read public table
-        try:
-            r = supabase.table('airports').select('id').limit(1).execute()
-            results['anon_key_table_read'] = 'OK'
-        except Exception as e:
-            results['anon_key_table_read'] = f'FAILED: {e}'
-
-        # Test service role key — read profiles
-        try:
-            r = supabase_admin.table('profiles').select('id').limit(1).execute()
-            results['service_key_table_read'] = 'OK'
-        except Exception as e:
-            results['service_key_table_read'] = f'FAILED: {e}'
-
-        # Test service role auth admin
-        try:
-            users = supabase_admin.auth.admin.list_users()
-            results['service_key_auth_admin'] = f'OK — {len(users)} users found'
-        except Exception as e:
-            results['service_key_auth_admin'] = f'FAILED: {e}'
-
-        return results, 200
-
     return app
 
 
