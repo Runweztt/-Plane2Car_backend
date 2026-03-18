@@ -140,7 +140,7 @@ def initiate_payment(booking_id):
 
         # 3. Build Paystack request
         price = booking.data.get('service_tiers', {}).get('price', 0)
-        amount_kobo = int(float(price) * 100)
+        amount_cents = int(float(price) * 100)  # Paystack expects amount in cents for USD
         reference = f"P2C-{booking_id[:8]}-{uuid.uuid4().hex[:8]}"
         callback_url = f"{Config.FRONTEND_URL_BASE}/payment/callback"
 
@@ -157,7 +157,8 @@ def initiate_payment(booking_id):
             },
             json={
                 "email": email,
-                "amount": amount_kobo,
+                "amount": amount_cents,
+                "currency": "USD",
                 "reference": reference,
                 "callback_url": callback_url,
                 "metadata": {"booking_id": booking_id},
@@ -177,7 +178,7 @@ def initiate_payment(booking_id):
             "booking_id": booking_id,
             "passenger_id": request.user.id,
             "amount": float(price),
-            "currency": "NGN",
+            "currency": "USD",
             "paystack_reference": reference,
             "authorization_url": authorization_url,
             "idempotency_key": idempotency_key,
