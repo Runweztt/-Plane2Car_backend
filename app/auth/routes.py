@@ -35,7 +35,8 @@ def register():
             "email": email,
             "password": password,
             "options": {
-                "data": {"full_name": full_name, "role": role}
+                "data": {"full_name": full_name, "role": role},
+                "email_redirect_to": f"{Config.FRONTEND_URL_BASE}/login",
             }
         })
     except Exception as e:
@@ -83,12 +84,23 @@ def login():
     if not email or not password:
         return jsonify({"error": "email and password are required"}), 400
 
+    # Check if the email exists but is unconfirmed — Supabase returns the same
+    # "Invalid login credentials" error for both wrong password AND unconfirmed email,
+    # so we must distinguish them using the admin client before attempting sign-in.
+    try:
+        admin_lookup = supabase_admin.auth.admin.get_user_by_email(email)
+        if admin_lookup and admin_lookup.user:
+            if not admin_lookup.user.email_confirmed_at:
+                return jsonify({"error": "Please confirm your email address. Check your inbox for the confirmation link."}), 401
+    except Exception:
+        pass  # If lookup fails, proceed to sign-in and let it surface naturally
+
     try:
         response = supabase.auth.sign_in_with_password({
             "email": email,
             "password": password
         })
-    except Exception:
+    except Exception as e:
         return jsonify({"error": "Invalid email or password"}), 401
 
     # Supabase returns session=None when email confirmation is required.

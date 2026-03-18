@@ -9,6 +9,8 @@ class Config:
     SUPABASE_KEY = os.getenv("SUPABASE_KEY")
     SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
     SECRET_KEY = os.getenv("SECRET_KEY")
+    PAYSTACK_SECRET_KEY = os.getenv("PAYSTACK_SECRET_KEY")
+    FRONTEND_URL_BASE = os.getenv("FRONTEND_URL", "http://localhost:5173").split(",")[0].strip()
     # Strip whitespace from each origin — copy-pasting from dashboards often
     # introduces trailing spaces, causing origin-mismatch CORS failures.
     CORS_ORIGINS = [
