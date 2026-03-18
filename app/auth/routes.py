@@ -91,6 +91,11 @@ def login():
     except Exception:
         return jsonify({"error": "Invalid email or password"}), 401
 
+    # Supabase returns session=None when email confirmation is required.
+    # Guard explicitly — accessing .access_token on None raises AttributeError → 500.
+    if not response.session:
+        return jsonify({"error": "Please confirm your email address before signing in."}), 401
+
     # Fetch role from profiles — use .limit(1) instead of maybe_single() for reliability
     role = 'passenger'
     full_name = ''

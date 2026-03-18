@@ -1,29 +1,29 @@
 import os
-from flask import Flask, request, make_response
+from flask import Flask
 from flask_cors import CORS
 from config import Config
 
 
 def create_app():
+    # Fail fast at startup if required env vars are missing.
+    # In production this surfaces immediately in Vercel build/runtime logs
+    # rather than as a cryptic 500 on the first request.
+    Config.validate()
+
     app = Flask(__name__)
     app.config.from_object(Config)
 
-    CORS(app, origins=Config.CORS_ORIGINS, supports_credentials=True, allow_headers=["Content-Type", "Authorization"], methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
-
-    # Handle CORS preflight (OPTIONS) before Flask routing kicks in
-    @app.before_request
-    def handle_options():
-        if request.method == 'OPTIONS':
-            origin = request.headers.get('Origin', '')
-            allowed = Config.CORS_ORIGINS
-            if '*' in allowed or origin in allowed:
-                resp = make_response('', 204)
-                resp.headers['Access-Control-Allow-Origin'] = origin if origin else '*'
-                resp.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, PATCH, DELETE, OPTIONS'
-                resp.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
-                resp.headers['Access-Control-Allow-Credentials'] = 'true'
-                resp.headers['Access-Control-Max-Age'] = '86400'
-                return resp
+    # Flask-CORS handles OPTIONS preflight automatically — do NOT add a
+    # manual before_request handler alongside it.  Mixing the two produces
+    # duplicate Access-Control-Allow-Origin headers which browsers reject.
+    CORS(
+        app,
+        origins=Config.CORS_ORIGINS,
+        supports_credentials=True,
+        allow_headers=["Content-Type", "Authorization"],
+        methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        max_age=86400,
+    )
 
     from app.auth.routes import auth_bp
     from app.bookings.routes import bookings_bp

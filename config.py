@@ -9,7 +9,13 @@ class Config:
     SUPABASE_KEY = os.getenv("SUPABASE_KEY")
     SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
     SECRET_KEY = os.getenv("SECRET_KEY")
-    CORS_ORIGINS = os.getenv("FRONTEND_URL", "http://localhost:5173").split(",")
+    # Strip whitespace from each origin — copy-pasting from dashboards often
+    # introduces trailing spaces, causing origin-mismatch CORS failures.
+    CORS_ORIGINS = [
+        o.strip()
+        for o in os.getenv("FRONTEND_URL", "http://localhost:5173").split(",")
+        if o.strip()
+    ]
 
     # SMTP email config (optional — emails are skipped if not set)
     MAIL_SERVER = os.getenv("MAIL_SERVER", "smtp.gmail.com")
@@ -24,4 +30,7 @@ class Config:
         missing = [k for k in ("SUPABASE_URL", "SUPABASE_KEY", "SUPABASE_SERVICE_ROLE_KEY", "SECRET_KEY")
                    if not os.getenv(k)]
         if missing:
-            raise RuntimeError(f"Missing required environment variables: {', '.join(missing)}")
+            raise RuntimeError(
+                f"Missing required environment variables: {', '.join(missing)}. "
+                "Set these in your Vercel project dashboard under Settings → Environment Variables."
+            )
