@@ -3,6 +3,7 @@ import jwt
 import datetime
 from flask import Blueprint, request, jsonify
 from app.services.supabase_client import supabase, supabase_admin
+from config import Config
 
 auth_bp = Blueprint('auth', __name__)
 
